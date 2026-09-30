@@ -27,3 +27,4 @@ Impostazioni → Backup dei dati: scarica o ripristina un file JSON con tutti gl
   import estratti conto Chase (PDF o CSV) e fatture emesse da Word/Excel/PDF.
 - Testi inglesi nel dizionario `src/en.json` (italiano → inglese), applicato in automatico dal build.
 - Prova locale della versione Inc.: aggiungi `?entity=inc` all'indirizzo.
+ 
