@@ -8,7 +8,7 @@ import {
   AlertTriangle, Link2, Unlink, Loader2, Pencil, ChevronRight, CircleDollarSign, Receipt,
   Users, Briefcase, Calendar, ListChecks, Phone, Mail, MessageSquare, StickyNote, Building2, UserCircle, Clock, BarChart3, Download, Globe
 } from "lucide-react";
-import { kvGet, kvSet, kvDelete, extractDoc, login as doLogin, getToken, clearToken } from "./db";
+import { kvGet, kvSet, kvDelete, extractDoc, logout as accessLogout } from "./db";
 
 /* ============================================================
    IA — Suite Fatturazione & Riconciliazione (prototipo)
@@ -182,7 +182,7 @@ async function fileToB64(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(new Error("read")); r.readAsDataURL(file); });
 }
 
-// ---- Claude extraction (via Netlify Function, chiave API lato server) ----
+// ---- Claude extraction (via Cloudflare Worker, chiave API lato server) ----
 function parseJSON(text) {
   let t = String(text).trim().replace(/```json/gi, "").replace(/```/g, "").trim();
   const s = t.indexOf("{"), e = t.lastIndexOf("}");
@@ -425,7 +425,7 @@ function Splash() {
 
 // ============================================================
 export default function App() {
-  const [authed, setAuthed] = useState(() => !!getToken());
+  const authed = true; // l'accesso è garantito da Cloudflare Access
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState("dashboard");
   const [month, setMonth] = useState(nowMonth());
@@ -445,6 +445,7 @@ export default function App() {
   const [customBankCats, setCustomBankCats] = useState([]);
   const [identity, setIdentityState] = useState(() => getIdentity());
   const [toast, setToast] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   // Load data once authenticated
   useEffect(() => {
@@ -458,18 +459,18 @@ export default function App() {
         setContracts(c); setActive(a); setExpenses(e); setPassive(p); setBank(b); setIssued(iss); setDues(du); setCash(ca);
         setProspects(pr); setCrmActivities(ca2); setAppointments(ap); setTasks(tk); setBankRules(br); setCustomBankCats(cbc);
         setReady(true);
-      } catch (err) { /* 401 → db.js forza il logout e ricarica */ }
+      } catch (err) { setLoadError(String(err.message || err)); }
     })();
   }, [authed]);
 
   const notify = (msg, kind = "ok") => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3200); };
   const persist = useCallback((key, val, setter) => { setter(val); ssave(key, val); }, []);
-  const logout = () => { clearToken(); clearIdentity(); setAuthed(false); setReady(false); setIdentityState(null); };
+  const logout = () => { clearIdentity(); accessLogout(); };
   const pickIdentity = (u) => { setIdentity(u); setIdentityState(u); };
   const switchIdentity = () => { clearIdentity(); setIdentityState(null); };
 
-  if (!authed) return <Login onDone={() => setAuthed(true)} />;
   if (!identity) return <IdentityPicker onPick={pickIdentity} onLogout={logout} />;
+  if (loadError) return <LoadError msg={loadError} />;
   if (!ready) return <Splash />;
 
   // Accesso condiviso: identità scelta al login → attribuzione azioni CRM
@@ -578,43 +579,20 @@ export default function App() {
 
 // ---- Logo (vectorial recreation) ----
 function Logo({ variant = "dark" }) {
-  const textColor = variant === "light" ? "#fff" : C.logoblue;
-  return (
-    <div style={{ display: "inline-block", border: `3px solid ${C.orange}`, borderRight: "none", padding: "8px 16px 8px 12px" }}>
-      <div className="ia-h" style={{ color: textColor, fontWeight: 700, fontSize: 15, lineHeight: 1.05, letterSpacing: ".5px" }}>INTERNATIONAL</div>
-      <div className="ia-h" style={{ color: textColor, fontWeight: 700, fontSize: 15, lineHeight: 1.05, letterSpacing: ".5px" }}>ADVISORS</div>
-    </div>
-  );
+  // Logo ufficiale IA: versione bianca su fondo scuro, versione blu su fondo chiaro
+  const src = variant === "light" ? "/logo-ia-bianco.png" : "/logo-ia.png";
+  return <img src={src} alt="International Advisors" style={{ display: "block", height: 52, width: "auto" }} />;
 }
 
-function Login({ onDone }) {
-  const [pw, setPw] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const signIn = async () => {
-    setBusy(true); setErr("");
-    try { await doLogin(pw); onDone(); }
-    catch (e) { setErr(e.message || "Accesso non riuscito"); setBusy(false); }
-  };
+function LoadError({ msg }) {
   return (
     <div className="ia-app" style={{ minHeight: "100vh", background: C.navy, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <style>{STYLE}</style>
-      <div style={{ width: 380, maxWidth: "100%" }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 30 }}><Logo variant="light" /></div>
-        <div className="ia-panel ia-bracket" style={{ padding: 30 }}>
-          <h2 className="ia-h" style={{ margin: "0 0 4px", fontSize: 19, color: C.navy }}>Accedi</h2>
-          <p style={{ margin: "0 0 22px", fontSize: 13.5, color: C.muted }}>Suite Fatturazione &amp; Riconciliazione — accesso condiviso.</p>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontFamily: "Poppins", fontWeight: 500, color: C.muted, display: "block", marginBottom: 5 }}>Password</label>
-            <input className="ia-input" type="password" autoFocus value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === "Enter" && pw && signIn()} />
-          </div>
-          {err && <div style={{ fontSize: 12.5, color: C.red, marginBottom: 12 }}>{err}</div>}
-          <button className="ia-btn ia-btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy || !pw} onClick={signIn}>
-            {busy ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : null} Entra
-          </button>
-        </div>
+      <div className="ia-panel ia-bracket" style={{ padding: 28, maxWidth: 440 }}>
+        <h2 className="ia-h" style={{ margin: "0 0 6px", fontSize: 18, color: C.navy }}>Dati non disponibili</h2>
+        <p style={{ fontSize: 13.5, color: C.muted, margin: "0 0 16px", lineHeight: 1.55 }}>Non è stato possibile caricare i dati della Suite ({msg}). Ricarica la pagina tra qualche istante; se il problema resta, contatta l'amministratore.</p>
+        <button className="ia-btn ia-btn-primary" onClick={() => location.reload()}><RefreshCw size={15} /> Ricarica</button>
       </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
@@ -5194,6 +5172,39 @@ function SettingsView({ ctx }) {
     setCash({ balance: n, updatedAt: today() });
     notify("Saldo cassa aggiornato");
   };
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  const exportBackup = async () => {
+    setBusy(true);
+    try {
+      const data = {};
+      for (const k of Object.values(K)) data[k] = await kvGet(k, null);
+      const blob = new Blob([JSON.stringify({ app: "ia-suite", exportedAt: new Date().toISOString(), data }, null, 1)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `ia-suite-backup-${today()}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      notify("Backup scaricato");
+    } catch (e) { notify("Backup non riuscito: " + e.message, "err"); }
+    setBusy(false);
+  };
+  const importBackup = async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    let json;
+    try { json = JSON.parse(await f.text()); } catch { notify("File non valido", "err"); return; }
+    const data = json && json.data;
+    if (!data || json.app !== "ia-suite") { notify("Il file non è un backup della IA Suite", "err"); return; }
+    const keys = Object.values(K).filter(k => k in data);
+    if (!confirm(`Ripristinare ${keys.length} archivi dal backup del ${String(json.exportedAt || "").slice(0, 10)}? I dati attuali verranno sostituiti.`)) return;
+    setBusy(true);
+    try {
+      for (const k of keys) { if (data[k] == null) await kvDelete(k); else await kvSet(k, data[k]); }
+      notify("Dati ripristinati — ricarico"); setTimeout(() => location.reload(), 900);
+    } catch (e) { notify("Ripristino non riuscito: " + e.message, "err"); setBusy(false); }
+  };
   const reset = async () => {
     if (!confirm("Azzerare TUTTI i dati (contratti, fatture, movimenti, scadenze)? Operazione irreversibile.")) return;
     for (const k of Object.values(K)) { try { await kvDelete(k); } catch (e) {} }
@@ -5215,8 +5226,17 @@ function SettingsView({ ctx }) {
       </div>
       <div className="ia-panel" style={{ padding: 22, marginBottom: 16 }}>
         <h3 className="ia-h" style={{ margin: "0 0 4px", fontSize: 15, color: C.navy }}>Accesso</h3>
-        <p style={{ fontSize: 13, color: C.muted, margin: "0 0 8px", lineHeight: 1.55 }}>L'app usa un'unica password condivisa, uguale per entrambi i soci. Si cambia dal pannello Netlify del sito, in <b>Project configuration → Environment variables</b>, aggiornando la variabile <code>APP_PASSWORD</code> (poi basta un nuovo deploy).</p>
-        <p style={{ fontSize: 13, color: C.muted, margin: 0, lineHeight: 1.55 }}>I dati sono condivisi e salvati su Netlify (Blobs): entrambi vedono e modificano le stesse informazioni.</p>
+        <p style={{ fontSize: 13, color: C.muted, margin: "0 0 8px", lineHeight: 1.55 }}>L'accesso è gestito dal portale IA Advisors Hub (Cloudflare Access): si entra con la propria email e un codice ricevuto via posta. Chi può entrare si decide nella policy <b>IA Srl</b> del pannello Zero Trust.</p>
+        <p style={{ fontSize: 13, color: C.muted, margin: 0, lineHeight: 1.55 }}>I dati sono condivisi e salvati su Cloudflare (R2), in uno spazio riservato a questa società.</p>
+      </div>
+      <div className="ia-panel" style={{ padding: 22, marginBottom: 16 }}>
+        <h3 className="ia-h" style={{ margin: "0 0 4px", fontSize: 15, color: C.navy }}>Backup dei dati</h3>
+        <p style={{ fontSize: 13, color: C.muted, margin: "0 0 14px", lineHeight: 1.55 }}>Scarica una copia completa dei dati (contratti, fatture, movimenti, scadenze, CRM) in un file JSON, oppure ripristina i dati da un file di backup. Il ripristino sostituisce i dati attuali.</p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="ia-btn ia-btn-primary" onClick={exportBackup} disabled={busy}><Download size={15} /> Scarica backup</button>
+          <button className="ia-btn" style={{ border: `1px solid ${C.line}`, background: "#fff" }} onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}><Upload size={15} /> Ripristina da backup</button>
+          <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={importBackup} />
+        </div>
       </div>
       <div className="ia-panel" style={{ padding: 22, borderColor: "#E7CFCF" }}>
         <h3 className="ia-h" style={{ margin: "0 0 4px", fontSize: 15, color: C.red }}>Area dati</h3>

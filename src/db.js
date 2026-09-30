@@ -1,53 +1,42 @@
-// Data layer — tutto su Netlify (Functions + Blobs). Nessun servizio esterno.
-// L'accesso è protetto da un token firmato ottenuto con la password condivisa.
-
-const TOKEN_KEY = "ia_token";
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+// Data layer — Cloudflare (Worker + R2).
+// L'accesso è gestito da Cloudflare Access (email + codice): l'app non ha più
+// un proprio login. Il server riconosce l'utente dall'email certificata da Access.
 
 async function api(path, opts = {}) {
-  const token = getToken();
   const res = await fetch(path, {
     ...opts,
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: "Bearer " + token } : {}),
-      ...(opts.headers || {}),
-    },
+    credentials: "same-origin",
+    headers: { "content-type": "application/json", ...(opts.headers || {}) },
   });
-  // 401 dalla funzione /data = token della IA Suite non valido → login.
-  // 401 da altri endpoint (es. extract) può arrivare per errori API esterni
-  // e NON deve forzare il logout.
-  if (res.status === 401 && path.includes("/data")) {
-    clearToken(); location.reload();
+  // Sessione Cloudflare Access scaduta: ricarico la pagina per rifare l'accesso.
+  if (res.status === 401 && path.startsWith("/api/data")) {
+    location.reload();
     throw new Error("Sessione scaduta");
   }
   return res;
 }
 
-export async function login(password) {
-  const res = await fetch("/.netlify/functions/login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Accesso non riuscito");
-  setToken(data.token);
-  return true;
+export async function me() {
+  const res = await api("/api/me");
+  return res.ok ? res.json() : null;
 }
 
-const dataUrl = (key) => "/.netlify/functions/data?key=" + encodeURIComponent(key);
+export function logout() {
+  location.href = "/cdn-cgi/access/logout";
+}
+
+const dataUrl = (key) => "/api/data?key=" + encodeURIComponent(key);
 
 export async function kvGet(key, def) {
   const res = await api(dataUrl(key));
+  if (!res.ok) throw new Error("Lettura dati non riuscita");
   const data = await res.json();
   return data.value != null ? data.value : def;
 }
 
 export async function kvSet(key, value) {
-  await api(dataUrl(key), { method: "PUT", body: JSON.stringify({ value }) });
+  const res = await api(dataUrl(key), { method: "PUT", body: JSON.stringify({ value }) });
+  if (!res.ok) throw new Error("Salvataggio non riuscito");
   return true;
 }
 
@@ -57,8 +46,8 @@ export async function kvDelete(key) {
 }
 
 export async function extractDoc(kind, payload) {
-  const res = await api("/.netlify/functions/extract", { method: "POST", body: JSON.stringify({ kind, ...payload }) });
-  const data = await res.json();
+  const res = await api("/api/extract", { method: "POST", body: JSON.stringify({ kind, ...payload }) });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Estrazione non riuscita");
   return data.text;
 }
