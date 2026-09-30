@@ -1,0 +1,32 @@
+{
+  // IA Suite — installazione IA International Advisors Inc.
+  "name": "ia-suite-inc",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+
+  // Nessun indirizzo tecnico *.workers.dev: si entra solo dal dominio protetto
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "routes": [
+    { "pattern": "inc-suite.ia-advisors-hub.com", "custom_domain": true }
+  ],
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Spazio dati riservato alla Inc.
+  "r2_buckets": [
+    { "binding": "DATA", "bucket_name": "ia-suite-inc-data" }
+  ],
+
+  "vars": {
+    "ENTITY": "inc",
+    "ANTHROPIC_MODEL": "claude-sonnet-5"
+  }
+  // ANTHROPIC_API_KEY va impostata come "Secret" nel pannello Cloudflare
+}
