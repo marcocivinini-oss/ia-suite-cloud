@@ -602,7 +602,9 @@ export default function App() {
 // ---- Logo (vectorial recreation) ----
 function Logo({ variant = "dark" }) {
   // Logo ufficiale IA: versione bianca su fondo scuro, versione blu su fondo chiaro
-  const src = variant === "light" ? "/logo-ia-bianco.png" : "/logo-ia.png";
+  const src = IS_INC
+    ? (variant === "light" ? "/logo-inc-bianco.png" : "/logo-inc.png")
+    : (variant === "light" ? "/logo-ia-bianco.png" : "/logo-ia.png");
   return <img src={src} alt="International Advisors" style={{ display: "block", height: 52, width: "auto" }} />;
 }
 
