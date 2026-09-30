@@ -22,6 +22,27 @@ const PROMPTS = {
 - notes: eventuale nota breve (max 100 caratteri) sul motivo dell'esenzione IVA o sulla natura del documento`,
 };
 
+PROMPTS.issued_invoice = `Extract the data of an invoice ISSUED by IA International Advisors to a client. Reply ONLY with a valid JSON object, no text or backticks, with the fields:
+- client: the client company name (the recipient, NOT IA International Advisors)
+- number: invoice number (string)
+- date: issue date YYYY-MM-DD, null if unclear
+- dueDate: payment due date YYYY-MM-DD, null if absent
+- amount: document TOTAL as a number, always positive
+- currency: ISO-4217 code ("USD", "EUR", …); look for the symbol or code, do not assume
+- isCreditNote: true if the document is a credit note, otherwise false
+- notes: short note (max 100 characters), null if none`;
+
+PROMPTS.bank_statement = `You are reading a US bank account statement (e.g. Chase). List EVERY transaction in the statement. Reply ONLY with a valid JSON object, no text or backticks:
+{"currency":"USD","transactions":[{"date":"YYYY-MM-DD","description":"…","amount":123.45}]}
+Rules:
+- Use the statement period to determine the full year of each date.
+- amount is POSITIVE for money coming in (deposits, additions, credits) and NEGATIVE for money going out (card purchases, ATM, electronic withdrawals, checks, fees).
+- description: a short readable text keeping the counterparty name (e.g. "Cep USA Inc – Invpymnt", "Intuit QuickBooks", "Same-Day ACH payment to Yazcc").
+- Do NOT include summary lines, totals, daily ending balances or beginning/ending balance.`;
+
+const CATEGORIES_EN = '"Consulting", "Travel", "Office", "Utilities", "Software", "Directors\' fees", "Other"';
+const MAX_TOKENS = { bank_statement: 8000 };
+
 const KEY_RE = /^[a-z0-9_]{1,80}$/;
 
 export default {
@@ -63,7 +84,10 @@ export default {
         const body = await request.json().catch(() => null);
         if (!body) return json(400, { error: "JSON non valido" });
         const { kind, pdfB64, text } = body;
-        const prompt = PROMPTS[kind];
+        let prompt = PROMPTS[kind];
+        if (prompt && kind === "invoice" && env.ENTITY === "inc") {
+          prompt = prompt.replace('"Consulenze", "Viaggi", "Uffici", "Utenze", "Software", "Compensi amministratori", "Altro" (usa "Altro" se non riesci a determinarla)', CATEGORIES_EN + ' (use "Other" if unsure)');
+        }
         if (!prompt) return json(400, { error: "kind non valido" });
         const content = pdfB64
           ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfB64 } }, { type: "text", text: prompt }]
@@ -75,7 +99,7 @@ export default {
             "x-api-key": env.ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
           },
-          body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5", max_tokens: 1000, messages: [{ role: "user", content }] }),
+          body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5", max_tokens: MAX_TOKENS[kind] || 1000, messages: [{ role: "user", content }] }),
         });
         const data = await r.json().catch(() => ({}));
         // Non inoltriamo lo status di Anthropic: un suo 401 non deve sembrare una sessione scaduta.

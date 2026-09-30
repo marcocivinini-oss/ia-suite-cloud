@@ -18,8 +18,12 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@babel/generator": "^7.28.0",
+    "@babel/parser": "^7.28.0",
+    "@babel/traverse": "^7.28.0",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.8",
-    "wrangler": "^4.40.0"
+    "wrangler": "^4.40.0",
+    "@babel/types": "^7.28.0"
   }
 }

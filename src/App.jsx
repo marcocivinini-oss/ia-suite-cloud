@@ -9,6 +9,7 @@ import {
   Users, Briefcase, Calendar, ListChecks, Phone, Mail, MessageSquare, StickyNote, Building2, UserCircle, Clock, BarChart3, Download, Globe
 } from "lucide-react";
 import { kvGet, kvSet, kvDelete, extractDoc, logout as accessLogout } from "./db";
+import { __t, IS_INC } from "./i18n.js";
 
 /* ============================================================
    IA — Suite Fatturazione & Riconciliazione (prototipo)
@@ -71,10 +72,15 @@ const STYLE = `
 const K = { contracts: "ia_contracts", active: "ia_active_invoices", expenses: "ia_expenses", passive: "ia_passive_invoices", bank: "ia_bank_tx", issued: "ia_issued_invoices", dues: "ia_manual_dues", cash: "ia_cash_balance", prospects: "ia_prospects", crmActivities: "ia_crm_activities", appointments: "ia_appointments", tasks: "ia_tasks", bankRules: "ia_bank_category_rules", customBankCats: "ia_custom_bank_cats" };
 // Team IA: due soci con accesso paritario. L'identità si salva nel browser
 // (localStorage) dopo il login, così l'app sa chi sta facendo cosa nel CRM.
-const TEAM = [
-  { id: "marco", name: "Marco Civinini", initials: "MC" },
-  { id: "guglielmo", name: "Guglielmo Iodice", initials: "GI" },
-];
+const TEAM = IS_INC
+  ? [
+      { id: "marco", name: "Marco Civinini", initials: "MC" },
+      { id: "yazmin", name: "Yazmin Sanchez", initials: "YS" },
+    ]
+  : [
+      { id: "marco", name: "Marco Civinini", initials: "MC" },
+      { id: "guglielmo", name: "Guglielmo Iodice", initials: "GI" },
+    ];
 const IDENTITY_KEY = "ia_identity";
 const getIdentity = () => { try { return JSON.parse(localStorage.getItem(IDENTITY_KEY) || "null"); } catch { return null; } };
 const setIdentity = (u) => localStorage.setItem(IDENTITY_KEY, JSON.stringify(u));
@@ -160,12 +166,13 @@ function fmtMoney(a, cur = "EUR") {
 const today = () => new Date().toISOString().slice(0, 10);
 function lastDayOfMonth(m) { const [y, mo] = m.split("-").map(Number); return new Date(y, mo, 0).toISOString().slice(0, 10); }
 function addDays(iso, n) { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + (Number(n) || 0)); return d.toISOString().slice(0, 10); }
-function fmtDate(iso) { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; }
+function fmtDate(iso) { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return IS_INC ? `${m}/${d}/${y}` : `${d}/${m}/${y}`; }
 function parseItAmount(raw) {
   if (raw == null) return NaN;
   let s = String(raw).trim().replace(/[€$\s]/g, "");
   const neg = /^\(.*\)$/.test(s) || s.includes("-");
   s = s.replace(/[()-]/g, "");
+  if (IS_INC) { s = s.replace(/,/g, ""); const n = parseFloat(s); return isNaN(n) ? NaN : (neg ? -n : n); } // formato USA: 1,234.56
   if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
   else if (s.includes(",")) s = s.replace(",", ".");
   const n = parseFloat(s);
@@ -199,6 +206,11 @@ async function extractFromFile(file, kind) {
     const ab = await file.arrayBuffer(); const { value } = await mammoth.extractRawText({ arrayBuffer: ab });
     return parseJSON(await extractDoc(kind, { text: value.slice(0, 12000) }));
   }
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    const ab = await file.arrayBuffer(); const wb = XLSX.read(ab, { type: "array", cellDates: true });
+    const text = wb.SheetNames.map(n => XLSX.utils.sheet_to_csv(wb.Sheets[n])).join("\n\n");
+    return parseJSON(await extractDoc(kind, { text: text.slice(0, 12000) }));
+  }
   throw new Error("Formato non supportato per l'estrazione automatica (usa PDF o Word).");
 }
 
@@ -224,9 +236,9 @@ function detectBank(rows) {
   let headerIdx = -1, cols = null;
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const r = rows[i].map(norm);
-    const dateI = r.findIndex(h => h.includes("data") && !h.includes("valuta") || h === "data contabile");
-    const anyDate = r.findIndex(h => h.includes("data"));
-    const amtI = r.findIndex(h => h.includes("importo"));
+    const dateI = r.findIndex(h => h.includes("data") && !h.includes("valuta") || h === "data contabile" || h === "posting date" || h === "transaction date");
+    const anyDate = r.findIndex(h => h.includes("data") || h.includes("date"));
+    const amtI = r.findIndex(h => h.includes("importo") || h === "amount");
     const descI = r.findIndex(h => h.includes("descr") || h.includes("dettagli") || h.includes("causale") || h.includes("operazione"));
     if ((dateI >= 0 || anyDate >= 0) && (amtI >= 0 || r.some(h => h.includes("dare") || h.includes("avere") || h.includes("entrate") || h.includes("uscite")))) {
       const dareI = r.findIndex(h => h.includes("dare") || h.includes("uscite") || h.includes("addebiti"));
@@ -253,10 +265,20 @@ function rowsToTx(rows, cols, headerIdx) {
     let dRaw = String(r[cols.date] || "").trim();
     let date = dRaw;
     const m = dRaw.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
-    if (m) { let y = m[3].length === 2 ? "20" + m[3] : m[3]; date = `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+    if (m) { let y = m[3].length === 2 ? "20" + m[3] : m[3]; const [dd, mm] = IS_INC ? [m[2], m[1]] : [m[1], m[2]]; date = `${y}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`; }
     out.push({ id: uid(), date, description: String(cols.desc >= 0 ? r[cols.desc] : "").trim() || "(mov. bancario)", amount, currency: "EUR", matchedId: null, matchedType: null });
   }
   return out;
+}
+
+// Estratto conto in PDF (es. Chase): Claude legge le sezioni e restituisce i movimenti con segno.
+async function importStatementPdf(file) {
+  const pdfB64 = await fileToB64(file);
+  const data = parseJSON(await extractDoc("bank_statement", { pdfB64 }));
+  const list = Array.isArray(data.transactions) ? data.transactions : [];
+  return list
+    .filter(x => x && x.date && !isNaN(Number(x.amount)))
+    .map(x => ({ id: uid(), date: String(x.date).slice(0, 10), description: String(x.description || "").trim() || "(bank transaction)", amount: Number(x.amount), currency: data.currency || "USD", matchedId: null, matchedType: null }));
 }
 
 // ---- Invoice-register imports (ATTIVA / PASSIVA exports from the management system) ----
@@ -265,7 +287,7 @@ function excelISO(v) {
   if (v instanceof Date) return new Date(v.getTime() - v.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   if (typeof v === "number") return new Date(Date.UTC(1899, 11, 30) + v * 86400000).toISOString().slice(0, 10);
   const m = String(v).match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
-  if (m) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+  if (m) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; const [dd, mm] = IS_INC ? [m[2], m[1]] : [m[1], m[2]]; return `${y}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`; }
   return "";
 }
 function headerMapReq(rows, spec, required) {
@@ -2356,6 +2378,15 @@ function Bank({ ctx }) {
   const handleFile = async (file) => {
     setBusy(true);
     try {
+      if ((file.name || "").toLowerCase().endsWith(".pdf")) {
+        const tx = await importStatementPdf(file);
+        if (!tx.length) throw new Error(IS_INC ? "No transactions found in the statement" : "Nessun movimento trovato nell'estratto conto");
+        const seen = new Set(bank.map(b => `${b.date}|${b.amount}|${b.description}`));
+        const fresh = tx.filter(b => !seen.has(`${b.date}|${b.amount}|${b.description}`));
+        setBank([...bank, ...fresh]);
+        notify(IS_INC ? `${fresh.length} transactions imported${tx.length - fresh.length ? `, ${tx.length - fresh.length} already present` : ""}` : `${fresh.length} movimenti importati`);
+        setBusy(false); return;
+      }
       const rows = await readTabular(file);
       const { headerIdx, cols } = detectBank(rows);
       if (headerIdx < 0) { setMapNeeded({ rows }); setBusy(false); return; }
@@ -2491,7 +2522,7 @@ function Bank({ ctx }) {
           {bank.length > 0 && <button className="ia-btn ia-btn-ghost" onClick={cleanupBankDuplicates} title="Rimuove i movimenti bancari doppi (stessa data + stesso importo + stessa descrizione), utile se hai importato lo stesso CSV due volte."><RefreshCw size={14} /> Ripulisci duplicati</button>}
           {bank.length > 0 && <button className="ia-btn ia-btn-danger" onClick={() => { if (confirm("Svuotare i movimenti importati?")) setBank([]); }}>Svuota movimenti</button>}
           <button className="ia-btn ia-btn-primary" disabled={busy} onClick={() => fileRef.current.click()}>{busy ? <Loader2 size={15} className="spin" /> : <Upload size={15} />} Importa CSV</button>
-          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" hidden onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; }} />
+          <input ref={fileRef} type="file" accept={IS_INC ? ".pdf,.csv,.xlsx,.xls" : ".csv,.xlsx,.xls"} hidden onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; }} />
         </div>
       </div>
 
@@ -2610,13 +2641,20 @@ const DOC_TYPES = [
   { id: "passiva", label: "Fatture ricevute (Excel)", icon: ArrowDownToLine, kind: "passiva", accept: ".xlsx,.xls", desc: "Importa l'elenco fatture passive (export PASSIVA)." },
   { id: "bank", label: "Estratto conto (CSV)", icon: Landmark, kind: "bank", accept: ".csv,.xlsx,.xls", desc: "Importa i movimenti Banco BPM per la riconciliazione." },
 ];
+const DOC_TYPES_ACTIVE = IS_INC
+  ? [
+      ...DOC_TYPES.filter(d => !["attiva", "passiva", "bank"].includes(d.id)),
+      { id: "issued", label: "Fattura emessa (Word/Excel/PDF)", icon: ArrowUpFromLine, kind: "issued_invoice", accept: ".pdf,.docx,.doc,.xlsx,.xls", desc: "Estrae cliente, numero, data e importo da una fattura emessa." },
+      { ...DOC_TYPES.find(d => d.id === "bank"), accept: ".pdf,.csv,.xlsx,.xls" },
+    ]
+  : DOC_TYPES;
 function UploadPortal({ ctx, go }) {
   const [type, setType] = useState("contract");
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState(null); // {kind, data, fileName}
   const inputRef = useRef();
-  const t = DOC_TYPES.find(d => d.id === type);
+  const t = DOC_TYPES_ACTIVE.find(d => d.id === type);
   const { notify, contracts, issued, setIssued, passive, setPassive } = ctx;
 
   const process = async (file) => {
@@ -2644,6 +2682,23 @@ function UploadPortal({ ctx, go }) {
       } catch (e) { notify(e.message || "Import non riuscito", "err"); }
       setBusy(false); return;
     }
+    if (type === "issued") {
+      setBusy(true);
+      try {
+        const d = await extractFromFile(file, "issued_invoice");
+        const amt = Math.abs(Number(d.amount));
+        if (!d.client || isNaN(amt)) throw new Error("Could not read client and amount from the invoice");
+        const date = d.date || today();
+        const isCredit = !!d.isCreditNote;
+        const ok = confirm(`Add this ${isCredit ? "credit note" : "invoice"}?\n\nClient: ${d.client}\nNumber: ${d.number || "—"}\nDate: ${fmtDate(date)}\nDue: ${d.dueDate ? fmtDate(d.dueDate) : "—"}\nAmount: ${fmtMoney(amt, d.currency || "USD")}`);
+        if (ok) {
+          const rec = { id: uid(), client: String(d.client).trim(), number: String(d.number || "").trim(), docType: isCredit ? "Credit note" : "Invoice", isCreditNote: isCredit, date, month: date.slice(0, 7), dueDate: d.dueDate || null, amount: isCredit ? -amt : amt, currency: d.currency || "USD", fteStatus: "", status: "issued", matchedId: null, source: "document" };
+          const { merged, added, dup } = mergeById(issued, [rec], issuedKey);
+          setIssued(merged); notify(added ? "Invoice added" : `Already present (${dup})`); go("active");
+        }
+      } catch (e) { notify(e.message || "Extraction failed", "err"); }
+      setBusy(false); return;
+    }
     setBusy(true);
     try {
       const data = await extractFromFile(file, t.kind);
@@ -2656,7 +2711,7 @@ function UploadPortal({ ctx, go }) {
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 20 }}>
-        {DOC_TYPES.map(d => (
+        {DOC_TYPES_ACTIVE.map(d => (
           <button key={d.id} onClick={() => setType(d.id)} className={"ia-panel" + (type === d.id ? " ia-bracket" : "")}
             style={{ padding: 16, textAlign: "left", cursor: "pointer", border: type === d.id ? `1px solid ${C.orange}` : `1px solid ${C.line}`, background: type === d.id ? "#FFF9F6" : "#fff" }}>
             <d.icon size={20} color={type === d.id ? C.orange : C.navy} />

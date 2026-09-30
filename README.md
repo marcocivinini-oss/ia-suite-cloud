@@ -19,3 +19,11 @@ Gestionale interno: contratti, fatture attive e passive, scadenze, banca e ricon
 
 ## Backup
 Impostazioni → Backup dei dati: scarica o ripristina un file JSON con tutti gli archivi.
+
+## Installazione IA International Advisors Inc.
+- Configurazione `wrangler.inc.jsonc`, indirizzo inc-suite.ia-advisors-hub.com, spazio dati R2 `ia-suite-inc-data`.
+- Deploy command: `npx wrangler deploy -c wrangler.inc.jsonc`.
+- L'installazione si riconosce dall'indirizzo (`inc-suite.…` = Inc.): interfaccia in inglese e in USD,
+  import estratti conto Chase (PDF o CSV) e fatture emesse da Word/Excel/PDF.
+- Testi inglesi nel dizionario `src/en.json` (italiano → inglese), applicato in automatico dal build.
+- Prova locale della versione Inc.: aggiungi `?entity=inc` all'indirizzo.
