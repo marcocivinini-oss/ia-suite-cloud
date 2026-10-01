@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileSignature, FileUp, ArrowDownToLine, ArrowUpFromLine,
   Landmark, Settings, Upload, Trash2, Check, X, Plus, RefreshCw, LogOut,
   AlertTriangle, Link2, Unlink, Loader2, Pencil, ChevronRight, CircleDollarSign, Receipt,
-  Users, Briefcase, Calendar, ListChecks, Phone, Mail, MessageSquare, StickyNote, Building2, UserCircle, Clock, BarChart3, Download, Globe
+  Users, Briefcase, Calendar, ListChecks, Phone, Mail, MessageSquare, StickyNote, Building2, UserCircle, Clock, BarChart3, Download, Globe, ArrowLeft
 } from "lucide-react";
 import { kvGet, kvSet, kvDelete, extractDoc, logout as accessLogout } from "./db";
 import { __t, IS_INC } from "./i18n.js";
@@ -554,7 +554,10 @@ export default function App() {
               <div style={{ fontSize: 11, color: "#8891B5" }}>IA Suite · <button style={{ background: "none", border: "none", color: "#C7CBDD", cursor: "pointer", padding: 0, fontSize: 11, textDecoration: "underline" }} onClick={switchIdentity}>cambia</button></div>
             </div>
           </div>
-          <button className="ia-btn ia-btn-ghost" style={{ width: "100%", marginTop: 12, justifyContent: "center", color: "#C7CBDD", borderColor: "rgba(255,255,255,.15)", background: "transparent" }} onClick={logout}>
+          <a className="ia-btn ia-btn-ghost" href="https://ia-advisors-hub.com/" style={{ width: "100%", marginTop: 12, justifyContent: "center", color: "#FFFFFF", borderColor: "rgba(245,117,71,.6)", background: "transparent", textDecoration: "none", boxSizing: "border-box" }}>
+            <ArrowLeft size={15} /> Torna al portale
+          </a>
+          <button className="ia-btn ia-btn-ghost" style={{ width: "100%", marginTop: 8, justifyContent: "center", color: "#C7CBDD", borderColor: "rgba(255,255,255,.15)", background: "transparent" }} onClick={logout}>
             <LogOut size={15} /> Esci
           </button>
         </div>

@@ -796,5 +796,6 @@
 "via Leuciana Pontecorvo\n03037 Italy": "123 Main Street\nNew York, NY 10001",
 "Es. Contract Jan 28 th, 2025 IA Inc retainer fee": "e.g. Contract Jan 28th, 2025 retainer fee",
 "BEGIN:VCALENDAR\nSUMMARY:Call con Vulcaflex\nDTSTART:20261115T143000Z\n...\n\noppure un testo tipo:\nRiunione con Mario Rossi\nQuando: 15/11/2026 14:30\nDove: Zoom": "BEGIN:VCALENDAR\nSUMMARY:Call with Acme\nDTSTART:20261115T143000Z\n...\n\nor a text like:\nMeeting with John Smith\nWhen: 11/15/2026 2:30 PM\nWhere: Zoom",
-". Importa l'elenco ATTIVA (Excel) qui o da «Carica documenti».": ". Record one here or upload it from «Upload documents»."
+". Importa l'elenco ATTIVA (Excel) qui o da «Carica documenti».": ". Record one here or upload it from «Upload documents».",
+"Torna al portale": "Back to the portal"
 }
